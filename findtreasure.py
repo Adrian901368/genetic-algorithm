@@ -108,7 +108,7 @@ class Finder:
 
         return finder_position, found_treasures, out_of_bounds
 
-    def calculate_fitness(self,finder_position, found_treasures, out_of_bounds):
+    def calculate_fitness(self, finder_position, found_treasures, out_of_bounds):
         # Calculate score
 
         # Deduct points for steps taken
