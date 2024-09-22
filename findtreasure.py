@@ -1,16 +1,20 @@
 from random import randint
+from copy import deepcopy
 
 # Define constants
 MEMORY_SIZE = 64
-POPULATION_SIZE = 20
+POPULATION_SIZE = 6
 MAX_STEPS = 500
+NUM_OF_GENERATIONS = 4  # Set the number of generations you want
 STEPS_PENALTY = -1
 TREASURE_BONUS = 20
 OUT_OF_BOUNDS_PENALTY = -20
 
-class Table:
+
+class Dna:
     def __init__(self):
-        self.memory = [format(randint(0, 255), '08b') for _ in range(MEMORY_SIZE)]  # Initialize memory with random 8-bit binary numbers
+        self.memory = [format(randint(0, 255), '08b') for _ in
+                       range(MEMORY_SIZE)]  # Initialize memory with random 8-bit binary numbers
 
     def increment(self, binary_number: str) -> str:
         num = int(binary_number, 2)
@@ -33,11 +37,12 @@ class Table:
         for i in range(MEMORY_SIZE):
             print(f"Cell {i:02d}: {self.memory[i]}")
 
+
 class Finder:
     def __init__(self):
-        self.table = Table()
+        self.table = Dna()
         self.movingsteps = 0
-        self.fitness = 20
+        self.fitness = 0
 
     def move_finder(self, max_steps=MAX_STEPS):
         # Initial settings
@@ -121,13 +126,62 @@ class Finder:
 
         return self.fitness
 
-# Create a population of finders (each with its own memory table)
-population = [Finder() for _ in range(POPULATION_SIZE)]
 
-# Run the move_finder function for each finder and print the results along with fitness
-for i, finder in enumerate(population):
-    print(f"Finder {i + 1}:")
-    finder_position, found_treasures, out_of_bounds = finder.move_finder(MAX_STEPS)
-    fitness = finder.calculate_fitness(finder_position, found_treasures, out_of_bounds)
-    print(f"Fpos: {finder_position} / Treasures: {found_treasures} / Fitness Score: {fitness}")
-    print()
+def evaluate_and_sort_population(population):
+    for finder in population:
+        # Run the Finder's movement logic
+        finder_position, found_treasures, out_of_bounds = finder.move_finder(MAX_STEPS)
+
+        # Calculate fitness for the Finder
+        finder.fitness = finder.calculate_fitness(finder_position, found_treasures, out_of_bounds)
+
+    # Sort the population by fitness (descending order)
+    population.sort(key=lambda f: f.fitness, reverse=True)
+    return population
+
+
+
+
+
+
+
+# Function to create the next generation by copying the previous one
+def create_next_generation(previous_generation):
+    # Create a new population with identical DNA as the previous generation
+    next_generation = [deepcopy(finder) for finder in previous_generation]
+    return next_generation
+
+
+# Create the first population of finders (each with its own memory table)
+generation_1 = [Finder() for _ in range(POPULATION_SIZE)]
+
+# This will hold multiple generations
+generations = []
+
+# Add the first generation (which is your current population)
+generations.append(generation_1)
+
+# Create the next generations as copies of the previous generation
+for gen_num in range(1, NUM_OF_GENERATIONS):
+    next_generation = create_next_generation(generations[gen_num - 1])
+    generations.append(next_generation)
+
+# Now, you have `NUM_OF_GENS` generations in the `generations` list
+
+# Outer loop for iterating over each generation
+for generation_index, generation in enumerate(generations):
+    print(f"\n-------------------------- Generation {generation_index + 1} -------------------------------")
+
+    # Inner loop for iterating over each Finder in the current generation
+    for finder_index, finder in enumerate(generation):
+        print(f"Finder {finder_index + 1} (Generation {generation_index + 1}):")
+
+        # Run the Finder's movement logic
+        finder_position, found_treasures, out_of_bounds = finder.move_finder(MAX_STEPS)
+
+        # Calculate fitness for the Finder
+        fitness = finder.calculate_fitness(finder_position, found_treasures, out_of_bounds)
+
+        # Print the Finder's status
+        print(f"Fpos: {finder_position} / Treasures: {found_treasures} / Fitness Score: {fitness}")
+        print()
