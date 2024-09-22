@@ -1,20 +1,25 @@
-from random import randint
+from random import randint, sample
 from copy import deepcopy
+
+import tkinter as tk
+from tkinter import ttk
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.pyplot as plt
 
 # Define constants
 MEMORY_SIZE = 64
-POPULATION_SIZE = 6
+POPULATION_SIZE = 20
 MAX_STEPS = 500
-NUM_OF_GENERATIONS = 4  # Set the number of generations you want
-STEPS_PENALTY = -1
+NUM_OF_GENERATIONS = 300  # Set the number of generations you want
+STEPS_PENALTY = -0.5
 TREASURE_BONUS = 20
-OUT_OF_BOUNDS_PENALTY = -20
-
+OUT_OF_BOUNDS_PENALTY = -5
+MUTATION_RATE = 0.01
 
 class Dna:
     def __init__(self):
-        self.memory = [format(randint(0, 255), '08b') for _ in
-                       range(MEMORY_SIZE)]  # Initialize memory with random 8-bit binary numbers
+        self.memory = generate_random_dna()  # Initialize memory with random 8-bit binary numbers
 
     def increment(self, binary_number: str) -> str:
         num = int(binary_number, 2)
@@ -37,18 +42,26 @@ class Dna:
         for i in range(MEMORY_SIZE):
             print(f"Cell {i:02d}: {self.memory[i]}")
 
-
 class Finder:
-    def __init__(self):
+    def __init__(self, dna_sequence=None):
         self.table = Dna()
+        if dna_sequence:
+            self.set_dna(dna_sequence)
         self.movingsteps = 0
         self.fitness = 0
+
+    def set_dna(self, dna_sequence):
+        """Sets the DNA of the finder."""
+        if is_valid_dna(dna_sequence):
+            self.table.memory = dna_sequence
+        else:
+            raise ValueError("DNA sequence must match MEMORY_SIZE and be valid.")
 
     def move_finder(self, max_steps=MAX_STEPS):
         # Initial settings
         pc = 0  # Program Counter
         steps = 0
-        finder_position = (3, 6)  # Starting position of the finder
+        finder_position = (3,6)  # Starting position of the finder
         treasures = [(4, 5), (1, 4), (2, 2), (4, 1), (6, 3)]  # List of treasures
         found_treasures = set()
         treasure_found = [False] * len(treasures)  # Flag for each treasure
@@ -113,75 +126,140 @@ class Finder:
 
         return finder_position, found_treasures, out_of_bounds
 
-    def calculate_fitness(self, finder_position, found_treasures, out_of_bounds):
+    def calculate_fitness(self, found_treasures, out_of_bounds):
         # Calculate score
-
+        self.fitness = 0
         # Deduct points for steps taken
         self.fitness += STEPS_PENALTY * self.movingsteps
         # Add points for each treasure found
-        self.fitness += (len(found_treasures) * TREASURE_BONUS)
+        self.fitness += (len(found_treasures) * (TREASURE_BONUS + 20*len(found_treasures)))
         # Deduct points for being out of bounds
         if out_of_bounds:
             self.fitness += OUT_OF_BOUNDS_PENALTY
 
         return self.fitness
 
+# Function to generate a random DNA sequence
+def generate_random_dna():
+    """Generates a random DNA sequence."""
+    return [format(randint(0, 255), '08b') for _ in range(MEMORY_SIZE)]
 
-def evaluate_and_sort_population(population):
-    for finder in population:
-        # Run the Finder's movement logic
-        finder_position, found_treasures, out_of_bounds = finder.move_finder(MAX_STEPS)
+# Function to check if DNA sequence is valid
+def is_valid_dna(dna_sequence):
+    """Checks if the DNA sequence is valid."""
+    return len(dna_sequence) == MEMORY_SIZE and all(len(code) == 8 for code in dna_sequence)
 
-        # Calculate fitness for the Finder
-        finder.fitness = finder.calculate_fitness(finder_position, found_treasures, out_of_bounds)
+# Function to perform crossover between two DNA sequences
+def two_point_crossover(dna1, dna2):
+    """Perform two-point crossover between two DNA sequences."""
+    point = randint(0, MEMORY_SIZE - 1)
+    point2 = randint(0, MEMORY_SIZE - 1)  # Ensure point2 > point1
 
-    # Sort the population by fitness (descending order)
-    population.sort(key=lambda f: f.fitness, reverse=True)
-    return population
+    # Create new DNA sequences by swapping segments between the two points
+    child1 = dna1[:point] + dna2[point:]
+    child2 = dna2[:point2] + dna1[point2:]
 
+    return child1, child2
 
+# Function to perform mutation on a DNA sequence
+def mutate(dna_sequence, mutation_rate=MUTATION_RATE):
+    """Perform mutation on a DNA sequence."""
+    mutated_dna = []
+    for gene in dna_sequence:
+        if randint(0, 100) / 100.0 < mutation_rate:
+            mutated_dna.append(format(randint(0, 255), '08b'))
+        else:
+            mutated_dna.append(gene)
+    return mutated_dna
 
+# Function to create the next generation with crossover and mutation
+from random import sample, choice
 
-
-
-
-# Function to create the next generation by copying the previous one
 def create_next_generation(previous_generation):
-    # Create a new population with identical DNA as the previous generation
-    next_generation = [deepcopy(finder) for finder in previous_generation]
+    # Flatten the list of finders
+    flat_previous_generation = [finder for finder in previous_generation]
+
+    # Sort finders by fitness
+    flat_previous_generation.sort(key=lambda f: f.fitness, reverse=True)
+
+    next_generation = []
+
+    # Select the top 5 finders
+    top_five = flat_previous_generation[:5]
+
+    # Randomly choose 5 more from the rest of the population
+    random_five = sample(flat_previous_generation[5:], 5)
+
+    # Combine the selected parents
+    parents = top_five + random_five
+
+    # Add the top 5 directly to the next generation
+    for parent in top_five:
+        next_generation.append(parent)
+
+    # Create offspring through crossover and mutation
+    for _ in range((POPULATION_SIZE - len(top_five)) // 2):
+        parent1, parent2 = sample(parents, 2)
+        child_dna1, child_dna2 = two_point_crossover(parent1.table.memory, parent2.table.memory)
+        child_dna1 = mutate(child_dna1)
+        child_dna2 = mutate(child_dna2)
+
+        # Validate the DNA and add to the next generation
+        if is_valid_dna(child_dna1):
+            next_generation.append(Finder(dna_sequence=child_dna1))
+        else:
+            next_generation.append(Finder(dna_sequence=generate_random_dna()))
+
+        if is_valid_dna(child_dna2):
+            next_generation.append(Finder(dna_sequence=child_dna2))
+        else:
+            next_generation.append(Finder(dna_sequence=generate_random_dna()))
+
     return next_generation
 
 
-# Create the first population of finders (each with its own memory table)
-generation_1 = [Finder() for _ in range(POPULATION_SIZE)]
+# Create the first population of finders (each with its own DNA sequence)
+finders = [Finder(dna_sequence=generate_random_dna()) for _ in range(POPULATION_SIZE)]
+generations_fitness = [0]*NUM_OF_GENERATIONS
+# Evolution loop
+for generation in range(NUM_OF_GENERATIONS):
+    print(f"\n-------------------------- Generation {generation + 1} ---------------")
 
-# This will hold multiple generations
-generations = []
-
-# Add the first generation (which is your current population)
-generations.append(generation_1)
-
-# Create the next generations as copies of the previous generation
-for gen_num in range(1, NUM_OF_GENERATIONS):
-    next_generation = create_next_generation(generations[gen_num - 1])
-    generations.append(next_generation)
-
-# Now, you have `NUM_OF_GENS` generations in the `generations` list
-
-# Outer loop for iterating over each generation
-for generation_index, generation in enumerate(generations):
-    print(f"\n-------------------------- Generation {generation_index + 1} -------------------------------")
-
-    # Inner loop for iterating over each Finder in the current generation
-    for finder_index, finder in enumerate(generation):
-        print(f"Finder {finder_index + 1} (Generation {generation_index + 1}):")
-
-        # Run the Finder's movement logic
+    for i, finder in enumerate(finders):
+        print(f"Finder {i + 1} (Generation {generation + 1}):")
         finder_position, found_treasures, out_of_bounds = finder.move_finder(MAX_STEPS)
+        fitness = finder.calculate_fitness(found_treasures, out_of_bounds)
+        generations_fitness[generation] += fitness
+        print(f"Position: {finder_position} / Treasures Found: {found_treasures} / Fitness Score: {fitness}")
 
-        # Calculate fitness for the Finder
-        fitness = finder.calculate_fitness(finder_position, found_treasures, out_of_bounds)
+    # Create next generation
+    print(f"fitness total - {generations_fitness[generation]}")
+    finders = create_next_generation(finders)
 
-        # Print the Finder's status
-        print(f"Fpos: {finder_position} / Treasures: {found_treasures} / Fitness Score: {fitness}")
-        print()
+print("Evolution complete.")
+
+root = tk.Tk()
+root.title("Fitness Graph")
+
+# Create a matplotlib Figure
+fig = Figure(figsize=(8, 6), dpi=100)
+ax = fig.add_subplot(111)
+
+# Plot the data
+ax.plot(range(1, NUM_OF_GENERATIONS + 1), generations_fitness, marker='o', color='b', linestyle='-', linewidth=2, markersize=5)
+ax.set_title("Fitness over Generations")
+ax.set_xlabel("Generation")
+ax.set_ylabel("Total Fitness")
+ax.grid(True)
+
+# Create a FigureCanvasTkAgg widget to embed the plot in the Tkinter window
+canvas = FigureCanvasTkAgg(fig, master=root)
+canvas.draw()
+canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+
+# Add a quit button
+button_quit = ttk.Button(root, text="Quit", command=root.quit)
+button_quit.pack(side=tk.BOTTOM)
+
+# Start the Tkinter event loop
+root.mainloop()
