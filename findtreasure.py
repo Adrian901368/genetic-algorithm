@@ -1,4 +1,4 @@
-from random import randint, sample
+from random import *
 from copy import deepcopy
 
 import tkinter as tk
@@ -9,13 +9,13 @@ import matplotlib.pyplot as plt
 
 # Define constants
 MEMORY_SIZE = 64
-POPULATION_SIZE = 20
+POPULATION_SIZE = 25
 MAX_STEPS = 500
-NUM_OF_GENERATIONS = 300  # Set the number of generations you want
-STEPS_PENALTY = -0.5
-TREASURE_BONUS = 20
-OUT_OF_BOUNDS_PENALTY = -5
-MUTATION_RATE = 0.01
+NUM_OF_GENERATIONS = 1000 # Set the number of generations you want
+STEPS_PENALTY = -1
+TREASURE_BONUS = 10
+OUT_OF_BOUNDS_PENALTY = -2
+MUTATION_RATE = 0.3
 
 class Dna:
     def __init__(self):
@@ -47,6 +47,7 @@ class Finder:
         self.table = Dna()
         if dna_sequence:
             self.set_dna(dna_sequence)
+        self.original_dna = deepcopy(self.table.memory)
         self.movingsteps = 0
         self.fitness = 0
 
@@ -71,7 +72,7 @@ class Finder:
             # Check if the finder is out of bounds
             if not (0 <= finder_position[0] <= 6 and 0 <= finder_position[1] <= 6):
                 out_of_bounds = True
-                print("Finder out of bounds at", finder_position, end=" ")
+                #print("Finder out of bounds at", finder_position, end=" ")
                 break
 
             # Check if all treasures are found
@@ -118,7 +119,7 @@ class Finder:
                     if not treasure_found[treasure_index]:
                         found_treasures.add(finder_position)
                         treasure_found[treasure_index] = True  # Mark the treasure as found
-                        print("Treasure found", finder_position, end="")
+                        #print("Treasure found", finder_position, end="")
 
                 pc += 1  # Move to the next instruction
 
@@ -132,7 +133,7 @@ class Finder:
         # Deduct points for steps taken
         self.fitness += STEPS_PENALTY * self.movingsteps
         # Add points for each treasure found
-        self.fitness += (len(found_treasures) * (TREASURE_BONUS + 20*len(found_treasures)))
+        self.fitness += TREASURE_BONUS * (2**len(found_treasures))
         # Deduct points for being out of bounds
         if out_of_bounds:
             self.fitness += OUT_OF_BOUNDS_PENALTY
@@ -152,13 +153,11 @@ def is_valid_dna(dna_sequence):
 # Function to perform crossover between two DNA sequences
 def two_point_crossover(dna1, dna2):
     """Perform two-point crossover between two DNA sequences."""
-    point = randint(0, MEMORY_SIZE - 1)
-    point2 = randint(0, MEMORY_SIZE - 1)  # Ensure point2 > point1
-
-    # Create new DNA sequences by swapping segments between the two points
-    child1 = dna1[:point] + dna2[point:]
-    child2 = dna2[:point2] + dna1[point2:]
-
+    point1 = randint(0, MEMORY_SIZE // 3)
+    point2 = randint(2 * MEMORY_SIZE // 3, MEMORY_SIZE - 1)
+    # Create children by crossing over between point1 and point2
+    child1 = dna1[:point1] + dna2[point1:point2] + dna1[point2:]
+    child2 = dna2[:point1] + dna1[point1:point2] + dna2[point2:]
     return child1, child2
 
 # Function to perform mutation on a DNA sequence
@@ -175,47 +174,52 @@ def mutate(dna_sequence, mutation_rate=MUTATION_RATE):
 # Function to create the next generation with crossover and mutation
 from random import sample, choice
 
-def create_next_generation(previous_generation):
-    # Flatten the list of finders
-    flat_previous_generation = [finder for finder in previous_generation]
+from random import sample, randint
 
+
+def create_next_generation(previous_generation):
     # Sort finders by fitness
-    flat_previous_generation.sort(key=lambda f: f.fitness, reverse=True)
+    previous_generation.sort(key=lambda f: f.fitness, reverse=True)
 
     next_generation = []
 
-    # Select the top 5 finders
-    top_five = flat_previous_generation[:5]
+    # Randomly select the number of top parents (between 1 and 9)
+    num_top_parents = randint(1, min(10, len(previous_generation) - 1))
 
-    # Randomly choose 5 more from the rest of the population
-    random_five = sample(flat_previous_generation[5:], 5)
+    # Ensure there are enough remaining parents to sample from
+    remaining_parents_count = len(previous_generation) - num_top_parents
+    num_random_parents = min(POPULATION_SIZE - num_top_parents, remaining_parents_count)  # Subtract 2 for the top finders
 
-    # Combine the selected parents
-    parents = top_five + random_five
+    # Add the top 2 finders with their original DNA to the next generation
+    for i in range(min(num_top_parents, len(previous_generation))):
+        best_finder = previous_generation[i]
+        best_dna = best_finder.original_dna
+        #mutate(best_dna)
+        next_generation.append(Finder(dna_sequence=best_dna))
 
-    # Add the top 5 directly to the next generation
-    for parent in top_five:
-        next_generation.append(parent)
+    # Select top N parents
+    top_parents = previous_generation[:num_top_parents]
+
+    # Select random parents
+    random_parents = sample(previous_generation[num_top_parents:], num_random_parents)
+
+    # Combine top parents and random ones
+    parents = top_parents + random_parents
 
     # Create offspring through crossover and mutation
-    for _ in range((POPULATION_SIZE - len(top_five)) // 2):
+    for _ in range((POPULATION_SIZE - len(next_generation)) // 2):
         parent1, parent2 = sample(parents, 2)
         child_dna1, child_dna2 = two_point_crossover(parent1.table.memory, parent2.table.memory)
         child_dna1 = mutate(child_dna1)
         child_dna2 = mutate(child_dna2)
 
-        # Validate the DNA and add to the next generation
         if is_valid_dna(child_dna1):
             next_generation.append(Finder(dna_sequence=child_dna1))
-        else:
-            next_generation.append(Finder(dna_sequence=generate_random_dna()))
-
         if is_valid_dna(child_dna2):
             next_generation.append(Finder(dna_sequence=child_dna2))
-        else:
-            next_generation.append(Finder(dna_sequence=generate_random_dna()))
 
     return next_generation
+
 
 
 # Create the first population of finders (each with its own DNA sequence)
@@ -229,11 +233,12 @@ for generation in range(NUM_OF_GENERATIONS):
         print(f"Finder {i + 1} (Generation {generation + 1}):")
         finder_position, found_treasures, out_of_bounds = finder.move_finder(MAX_STEPS)
         fitness = finder.calculate_fitness(found_treasures, out_of_bounds)
-        generations_fitness[generation] += fitness
+        if generations_fitness[generation] < fitness:
+            generations_fitness[generation] = fitness
         print(f"Position: {finder_position} / Treasures Found: {found_treasures} / Fitness Score: {fitness}")
 
     # Create next generation
-    print(f"fitness total - {generations_fitness[generation]}")
+    print(f"best fitness - {generations_fitness[generation]}")
     finders = create_next_generation(finders)
 
 print("Evolution complete.")
