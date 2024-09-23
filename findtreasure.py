@@ -1,6 +1,6 @@
 from random import *
 from copy import deepcopy
-
+from math import *
 import tkinter as tk
 from tkinter import ttk
 from matplotlib.figure import Figure
@@ -11,11 +11,11 @@ import matplotlib.pyplot as plt
 MEMORY_SIZE = 64
 POPULATION_SIZE = 25
 MAX_STEPS = 500
-NUM_OF_GENERATIONS = 1000 # Set the number of generations you want
+NUM_OF_GENERATIONS = 10000 # Set the number of generations you want
 STEPS_PENALTY = -1
-TREASURE_BONUS = 10
-OUT_OF_BOUNDS_PENALTY = -2
-MUTATION_RATE = 0.3
+TREASURE_BONUS = 15
+OUT_OF_BOUNDS_PENALTY = -5
+MUTATION_RATE = 0.1
 
 class Dna:
     def __init__(self):
@@ -50,6 +50,7 @@ class Finder:
         self.original_dna = deepcopy(self.table.memory)
         self.movingsteps = 0
         self.fitness = 0
+        self.log = []
 
     def set_dna(self, dna_sequence):
         """Sets the DNA of the finder."""
@@ -72,12 +73,12 @@ class Finder:
             # Check if the finder is out of bounds
             if not (0 <= finder_position[0] <= 6 and 0 <= finder_position[1] <= 6):
                 out_of_bounds = True
-                #print("Finder out of bounds at", finder_position, end=" ")
+                self.log.append(f"Finder out of bounds at {finder_position}")
                 break
 
             # Check if all treasures are found
             if all(treasure_found):
-                print("All treasures found!")
+                self.log.append("\n *** All treasures found! *** ")
                 break
 
             position = pc % MEMORY_SIZE  # Ensure we stay within MEMORY_SIZE memory cells
@@ -97,19 +98,19 @@ class Finder:
             elif instruction == '11':  # Print
                 ones_count = self.table.count_ones(next_value)
                 if ones_count <= 2:
-                    print("H", end=" ")  # Move Up
+                    self.log.append("H")  # Move Up
                     finder_position = (finder_position[0], finder_position[1] - 1)
                     self.movingsteps += 1
                 elif ones_count <= 4:
-                    print("D", end=" ")  # Move Down
+                    self.log.append("D")  # Move Down
                     finder_position = (finder_position[0], finder_position[1] + 1)
                     self.movingsteps += 1
                 elif ones_count <= 6:
-                    print("P", end=" ")  # Move Right
+                    self.log.append("P")  # Move Right
                     finder_position = (finder_position[0] + 1, finder_position[1])
                     self.movingsteps += 1
                 else:
-                    print("L", end=" ")  # Move Left
+                    self.log.append("L")  # Move Left
                     finder_position = (finder_position[0] - 1, finder_position[1])
                     self.movingsteps += 1
 
@@ -125,18 +126,28 @@ class Finder:
 
             steps += 1  # Count the step
 
-        return finder_position, found_treasures, out_of_bounds
+        return finder_position, found_treasures, out_of_bounds, treasure_found
 
-    def calculate_fitness(self, found_treasures, out_of_bounds):
-        # Calculate score
+    def calculate_fitness(self, found_treasures, out_of_bounds, finder_position, treasures):
+        # Initial fitness score
         self.fitness = 0
-        # Deduct points for steps taken
+
+        # Deduct points for the number of steps taken
         self.fitness += STEPS_PENALTY * self.movingsteps
-        # Add points for each treasure found
-        self.fitness += TREASURE_BONUS * (2**len(found_treasures))
+
+        # Add bonus points for each treasure found
+        self.fitness += TREASURE_BONUS * (2 ** len(found_treasures))
+
         # Deduct points for being out of bounds
         if out_of_bounds:
             self.fitness += OUT_OF_BOUNDS_PENALTY
+
+        # Penalty for missing treasures based on Manhattan distance
+        missing_treasures = [treasure for i, treasure in enumerate(treasures) if not treasure_found[i]]
+        for i, treasure in enumerate(missing_treasures):
+            distance = calculate_manhattan_distance(finder_position, treasure)
+            # Apply penalty based on distance (more penalties for multiple missing treasures)
+            self.fitness -= distance**(1/2) * (i + 1)
 
         return self.fitness
 
@@ -172,10 +183,10 @@ def mutate(dna_sequence, mutation_rate=MUTATION_RATE):
     return mutated_dna
 
 # Function to create the next generation with crossover and mutation
-from random import sample, choice
 
-from random import sample, randint
-
+def calculate_manhattan_distance(pos1, pos2):
+    """Calculate the Manhattan distance between two points (x1, y1) and (x2, y2)."""
+    return int(fabs(pos1[0] - pos2[0]) + fabs(pos1[1] - pos2[1]))
 
 def create_next_generation(previous_generation):
     # Sort finders by fitness
@@ -191,10 +202,10 @@ def create_next_generation(previous_generation):
     num_random_parents = min(POPULATION_SIZE - num_top_parents, remaining_parents_count)  # Subtract 2 for the top finders
 
     # Add the top 2 finders with their original DNA to the next generation
-    for i in range(min(num_top_parents, len(previous_generation))):
+    for i in range(min(num_top_parents , len(previous_generation))):
         best_finder = previous_generation[i]
         best_dna = best_finder.original_dna
-        #mutate(best_dna)
+        #mutate(best_dna, 0.01)
         next_generation.append(Finder(dna_sequence=best_dna))
 
     # Select top N parents
@@ -229,16 +240,33 @@ generations_fitness = [0]*NUM_OF_GENERATIONS
 for generation in range(NUM_OF_GENERATIONS):
     print(f"\n-------------------------- Generation {generation + 1} ---------------")
 
-    for i, finder in enumerate(finders):
-        print(f"Finder {i + 1} (Generation {generation + 1}):")
-        finder_position, found_treasures, out_of_bounds = finder.move_finder(MAX_STEPS)
-        fitness = finder.calculate_fitness(found_treasures, out_of_bounds)
-        if generations_fitness[generation] < fitness:
-            generations_fitness[generation] = fitness
-        print(f"Position: {finder_position} / Treasures Found: {found_treasures} / Fitness Score: {fitness}")
+    best_fitness = float('-inf')  # Initialize the best fitness with a very low value
+    best_finder = None  # To store the best finder of the generation
+    best_finder_position = None
+    best_found_treasures = None
 
-    # Create next generation
-    print(f"best fitness - {generations_fitness[generation]}")
+    for i, finder in enumerate(finders):
+        # Pass the treasures as a result from move_finder
+        finder_position, found_treasures, out_of_bounds, treasure_found = finder.move_finder(MAX_STEPS)
+        treasures = [(4, 5), (1, 4), (2, 2), (4, 1), (6, 3)]  # Define treasures here in the main loop
+        fitness = finder.calculate_fitness(found_treasures, out_of_bounds, finder_position, treasures)
+
+        # Update if this finder has a better fitness score
+        if fitness > best_fitness:
+            best_fitness = fitness
+            best_finder = finder
+            best_finder_position = finder_position
+            best_found_treasures = found_treasures
+
+    # Store the best fitness for the generation
+    generations_fitness[generation] = best_fitness
+
+    # Print the best finder of the generation
+    print(f"Best Finder (Generation {generation + 1}):")
+    print(f"Position: {best_finder_position} / Treasures Found: {best_found_treasures} / Fitness Score: {best_fitness}")
+    print(" ".join(best_finder.log))
+
+    # Create the next generation
     finders = create_next_generation(finders)
 
 print("Evolution complete.")
