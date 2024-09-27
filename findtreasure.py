@@ -9,9 +9,9 @@ import matplotlib.pyplot as plt
 
 # Define constants
 MEMORY_SIZE = 64
-POPULATION_SIZE = 25
+POPULATION_SIZE = 200
 MAX_STEPS = 500
-NUM_OF_GENERATIONS = 10000 # Set the number of generations you want
+NUM_OF_GENERATIONS = 3000 # Set the number of generations you want
 STEPS_PENALTY = -1
 TREASURE_BONUS = 15
 OUT_OF_BOUNDS_PENALTY = -5
@@ -53,7 +53,6 @@ class Finder:
         self.log = []
 
     def set_dna(self, dna_sequence):
-        """Sets the DNA of the finder."""
         if is_valid_dna(dna_sequence):
             self.table.memory = dna_sequence
         else:
@@ -145,7 +144,7 @@ class Finder:
         # Penalty for missing treasures based on Manhattan distance
         missing_treasures = [treasure for i, treasure in enumerate(treasures) if not treasure_found[i]]
         for i, treasure in enumerate(missing_treasures):
-            distance = calculate_manhattan_distance(finder_position, treasure)
+            distance = calculate_distance(finder_position, treasure)
             # Apply penalty based on distance (more penalties for multiple missing treasures)
             self.fitness -= distance**(1/2) * (i + 1)
 
@@ -153,17 +152,14 @@ class Finder:
 
 # Function to generate a random DNA sequence
 def generate_random_dna():
-    """Generates a random DNA sequence."""
     return [format(randint(0, 255), '08b') for _ in range(MEMORY_SIZE)]
 
 # Function to check if DNA sequence is valid
 def is_valid_dna(dna_sequence):
-    """Checks if the DNA sequence is valid."""
     return len(dna_sequence) == MEMORY_SIZE and all(len(code) == 8 for code in dna_sequence)
 
 # Function to perform crossover between two DNA sequences
 def two_point_crossover(dna1, dna2):
-    """Perform two-point crossover between two DNA sequences."""
     point1 = randint(0, MEMORY_SIZE // 3)
     point2 = randint(2 * MEMORY_SIZE // 3, MEMORY_SIZE - 1)
     # Create children by crossing over between point1 and point2
@@ -173,7 +169,6 @@ def two_point_crossover(dna1, dna2):
 
 # Function to perform mutation on a DNA sequence
 def mutate(dna_sequence, mutation_rate=MUTATION_RATE):
-    """Perform mutation on a DNA sequence."""
     mutated_dna = []
     for gene in dna_sequence:
         if randint(0, 100) / 100.0 < mutation_rate:
@@ -184,8 +179,7 @@ def mutate(dna_sequence, mutation_rate=MUTATION_RATE):
 
 # Function to create the next generation with crossover and mutation
 
-def calculate_manhattan_distance(pos1, pos2):
-    """Calculate the Manhattan distance between two points (x1, y1) and (x2, y2)."""
+def calculate_distance(pos1, pos2):
     return int(fabs(pos1[0] - pos2[0]) + fabs(pos1[1] - pos2[1]))
 
 def create_next_generation(previous_generation):
@@ -214,10 +208,10 @@ def create_next_generation(previous_generation):
     # Select random parents
     random_parents = sample(previous_generation[num_top_parents:], num_random_parents)
 
-    # Combine top parents and random ones
+    # Combine top parents and random
     parents = top_parents + random_parents
 
-    # Create offspring through crossover and mutation
+    # Create crossover and mutation to children
     for _ in range((POPULATION_SIZE - len(next_generation)) // 2):
         parent1, parent2 = sample(parents, 2)
         child_dna1, child_dna2 = two_point_crossover(parent1.table.memory, parent2.table.memory)
